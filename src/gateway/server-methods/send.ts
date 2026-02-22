@@ -1,8 +1,8 @@
 import { resolveSessionAgentId } from "../../agents/agent-scope.js";
 import { getChannelPlugin, normalizeChannelId } from "../../channels/plugins/index.js";
-import { DEFAULT_CHAT_CHANNEL } from "../../channels/registry.js";
 import { createOutboundSendDeps } from "../../cli/deps.js";
 import { loadConfig } from "../../config/config.js";
+import { resolveMessageChannelSelection } from "../../infra/outbound/channel-selection.js";
 import { deliverOutboundPayloads } from "../../infra/outbound/deliver.js";
 import {
   ensureOutboundSessionEntry,
@@ -64,6 +64,7 @@ export const sendHandlers: GatewayRequestHandlers = {
       gifPlayback?: boolean;
       channel?: string;
       accountId?: string;
+      threadId?: string;
       sessionKey?: string;
       idempotencyKey: string;
     };
@@ -125,10 +126,23 @@ export const sendHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    const channel = normalizedChannel ?? DEFAULT_CHAT_CHANNEL;
+    const cfg = loadConfig();
+    let channel = normalizedChannel;
+    if (!channel) {
+      try {
+        channel = (await resolveMessageChannelSelection({ cfg })).channel;
+      } catch (err) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+        return;
+      }
+    }
     const accountId =
       typeof request.accountId === "string" && request.accountId.trim().length
         ? request.accountId.trim()
+        : undefined;
+    const threadId =
+      typeof request.threadId === "string" && request.threadId.trim().length
+        ? request.threadId.trim()
         : undefined;
     const outboundChannel = channel;
     const plugin = getChannelPlugin(channel);
@@ -143,7 +157,6 @@ export const sendHandlers: GatewayRequestHandlers = {
 
     const work = (async (): Promise<InflightResult> => {
       try {
-        const cfg = loadConfig();
         const resolved = resolveOutboundTarget({
           channel: outboundChannel,
           to,
@@ -182,6 +195,7 @@ export const sendHandlers: GatewayRequestHandlers = {
               agentId: derivedAgentId,
               accountId,
               target: resolved.to,
+              threadId,
             })
           : null;
         if (derivedRoute) {
@@ -203,6 +217,7 @@ export const sendHandlers: GatewayRequestHandlers = {
             ? resolveSessionAgentId({ sessionKey: providedSessionKey, config: cfg })
             : derivedAgentId,
           gifPlayback: request.gifPlayback,
+          threadId: threadId ?? null,
           deps: outboundDeps,
           mirror: providedSessionKey
             ? {
@@ -317,7 +332,16 @@ export const sendHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    const channel = normalizedChannel ?? DEFAULT_CHAT_CHANNEL;
+    const cfg = loadConfig();
+    let channel = normalizedChannel;
+    if (!channel) {
+      try {
+        channel = (await resolveMessageChannelSelection({ cfg })).channel;
+      } catch (err) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+        return;
+      }
+    }
     if (typeof request.durationSeconds === "number" && channel !== "telegram") {
       respond(
         false,
@@ -363,7 +387,6 @@ export const sendHandlers: GatewayRequestHandlers = {
         );
         return;
       }
-      const cfg = loadConfig();
       const resolved = resolveOutboundTarget({
         channel: channel,
         to,
