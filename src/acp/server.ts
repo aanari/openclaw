@@ -3,9 +3,9 @@ import { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { AgentSideConnection, ndJsonStream } from "@agentclientprotocol/sdk";
 import { loadConfig } from "../config/config.js";
-import { resolveGatewayAuth } from "../gateway/auth.js";
 import { buildGatewayConnectionDetails } from "../gateway/call.js";
 import { GatewayClient } from "../gateway/client.js";
+import { resolveGatewayConnectionAuth } from "../gateway/connection-auth.js";
 import { isMainModule } from "../infra/is-main.js";
 import { GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES } from "../utils/message-channel.js";
 import { readSecretFromFile } from "./secret-file.js";
@@ -18,21 +18,22 @@ export async function serveAcpGateway(opts: AcpServerOptions = {}): Promise<void
     config: cfg,
     url: opts.gatewayUrl,
   });
-
-  const isRemoteMode = cfg.gateway?.mode === "remote";
-  const remote = isRemoteMode ? cfg.gateway?.remote : undefined;
-  const auth = resolveGatewayAuth({ authConfig: cfg.gateway?.auth, env: process.env });
-
-  const token =
-    opts.gatewayToken ??
-    (isRemoteMode ? remote?.token?.trim() : undefined) ??
-    process.env.OPENCLAW_GATEWAY_TOKEN ??
-    auth.token;
-  const password =
-    opts.gatewayPassword ??
-    (isRemoteMode ? remote?.password?.trim() : undefined) ??
-    process.env.OPENCLAW_GATEWAY_PASSWORD ??
-    auth.password;
+  const gatewayUrlOverrideSource =
+    connection.urlSource === "cli --url"
+      ? "cli"
+      : connection.urlSource === "env OPENCLAW_GATEWAY_URL"
+        ? "env"
+        : undefined;
+  const creds = await resolveGatewayConnectionAuth({
+    config: cfg,
+    explicitAuth: {
+      token: opts.gatewayToken,
+      password: opts.gatewayPassword,
+    },
+    env: process.env,
+    urlOverride: gatewayUrlOverrideSource ? connection.url : undefined,
+    urlOverrideSource: gatewayUrlOverrideSource,
+  });
 
   let agent: AcpGatewayAgent | null = null;
   let onClosed!: () => void;
@@ -64,8 +65,8 @@ export async function serveAcpGateway(opts: AcpServerOptions = {}): Promise<void
 
   const gateway = new GatewayClient({
     url: connection.url,
-    token: token || undefined,
-    password: password || undefined,
+    token: creds.token,
+    password: creds.password,
     clientName: GATEWAY_CLIENT_NAMES.CLI,
     clientDisplayName: "ACP",
     clientVersion: "acp",

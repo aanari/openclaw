@@ -3,8 +3,10 @@ import type { OpenClawConfig } from "../config/config.js";
 import {
   buildBootstrapContextFiles,
   DEFAULT_BOOTSTRAP_MAX_CHARS,
+  DEFAULT_BOOTSTRAP_PROMPT_TRUNCATION_WARNING_MODE,
   DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS,
   resolveBootstrapMaxChars,
+  resolveBootstrapPromptTruncationWarningMode,
   resolveBootstrapTotalMaxChars,
 } from "./pi-embedded-helpers.js";
 import type { WorkspaceBootstrapFile } from "./workspace.js";
@@ -17,6 +19,12 @@ const makeFile = (overrides: Partial<WorkspaceBootstrapFile>): WorkspaceBootstra
   missing: false,
   ...overrides,
 });
+
+const createLargeBootstrapFiles = (): WorkspaceBootstrapFile[] => [
+  makeFile({ name: "AGENTS.md", content: "a".repeat(10_000) }),
+  makeFile({ name: "SOUL.md", path: "/tmp/SOUL.md", content: "b".repeat(10_000) }),
+  makeFile({ name: "USER.md", path: "/tmp/USER.md", content: "c".repeat(10_000) }),
+];
 describe("buildBootstrapContextFiles", () => {
   it("keeps missing markers", () => {
     const files = [makeFile({ missing: true, content: undefined })];
@@ -60,11 +68,7 @@ describe("buildBootstrapContextFiles", () => {
   });
 
   it("keeps total injected bootstrap characters under the new default total cap", () => {
-    const files = [
-      makeFile({ name: "AGENTS.md", content: "a".repeat(10_000) }),
-      makeFile({ name: "SOUL.md", path: "/tmp/SOUL.md", content: "b".repeat(10_000) }),
-      makeFile({ name: "USER.md", path: "/tmp/USER.md", content: "c".repeat(10_000) }),
-    ];
+    const files = createLargeBootstrapFiles();
     const result = buildBootstrapContextFiles(files);
     const totalChars = result.reduce((sum, entry) => sum + entry.content.length, 0);
     expect(totalChars).toBeLessThanOrEqual(DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS);
@@ -73,11 +77,7 @@ describe("buildBootstrapContextFiles", () => {
   });
 
   it("caps total injected bootstrap characters when totalMaxChars is configured", () => {
-    const files = [
-      makeFile({ name: "AGENTS.md", content: "a".repeat(10_000) }),
-      makeFile({ name: "SOUL.md", path: "/tmp/SOUL.md", content: "b".repeat(10_000) }),
-      makeFile({ name: "USER.md", path: "/tmp/USER.md", content: "c".repeat(10_000) }),
-    ];
+    const files = createLargeBootstrapFiles();
     const result = buildBootstrapContextFiles(files, { totalMaxChars: 24_000 });
     const totalChars = result.reduce((sum, entry) => sum + entry.content.length, 0);
     expect(totalChars).toBeLessThanOrEqual(24_000);
@@ -194,5 +194,34 @@ describe("bootstrap limit resolvers", () => {
       } as OpenClawConfig;
       expect(resolver.resolve(cfg)).toBe(resolver.defaultValue);
     }
+  });
+});
+
+describe("resolveBootstrapPromptTruncationWarningMode", () => {
+  it("defaults to once", () => {
+    expect(resolveBootstrapPromptTruncationWarningMode()).toBe(
+      DEFAULT_BOOTSTRAP_PROMPT_TRUNCATION_WARNING_MODE,
+    );
+  });
+
+  it("accepts explicit valid modes", () => {
+    expect(
+      resolveBootstrapPromptTruncationWarningMode({
+        agents: { defaults: { bootstrapPromptTruncationWarning: "off" } },
+      } as OpenClawConfig),
+    ).toBe("off");
+    expect(
+      resolveBootstrapPromptTruncationWarningMode({
+        agents: { defaults: { bootstrapPromptTruncationWarning: "always" } },
+      } as OpenClawConfig),
+    ).toBe("always");
+  });
+
+  it("falls back to default for invalid values", () => {
+    expect(
+      resolveBootstrapPromptTruncationWarningMode({
+        agents: { defaults: { bootstrapPromptTruncationWarning: "invalid" } },
+      } as unknown as OpenClawConfig),
+    ).toBe(DEFAULT_BOOTSTRAP_PROMPT_TRUNCATION_WARNING_MODE);
   });
 });

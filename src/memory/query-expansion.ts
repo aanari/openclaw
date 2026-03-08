@@ -262,6 +262,68 @@ const STOP_WORDS_PT = new Set([
   "ajuda",
 ]);
 
+const STOP_WORDS_AR = new Set([
+  // Articles and connectors
+  "ال",
+  "و",
+  "أو",
+  "لكن",
+  "ثم",
+  "بل",
+  // Pronouns / references
+  "أنا",
+  "نحن",
+  "هو",
+  "هي",
+  "هم",
+  "هذا",
+  "هذه",
+  "ذلك",
+  "تلك",
+  "هنا",
+  "هناك",
+  // Common prepositions
+  "من",
+  "إلى",
+  "الى",
+  "في",
+  "على",
+  "عن",
+  "مع",
+  "بين",
+  "ل",
+  "ب",
+  "ك",
+  // Common auxiliaries / vague verbs
+  "كان",
+  "كانت",
+  "يكون",
+  "تكون",
+  "صار",
+  "أصبح",
+  "يمكن",
+  "ممكن",
+  // Time references (vague)
+  "بالأمس",
+  "امس",
+  "اليوم",
+  "غدا",
+  "الآن",
+  "قبل",
+  "بعد",
+  "مؤخرا",
+  // Question/request words
+  "لماذا",
+  "كيف",
+  "ماذا",
+  "متى",
+  "أين",
+  "هل",
+  "من فضلك",
+  "فضلا",
+  "ساعد",
+]);
+
 const STOP_WORDS_KO = new Set([
   // Particles (조사)
   "은",
@@ -568,6 +630,18 @@ const STOP_WORDS_ZH = new Set([
   "告诉",
 ]);
 
+export function isQueryStopWordToken(token: string): boolean {
+  return (
+    STOP_WORDS_EN.has(token) ||
+    STOP_WORDS_ES.has(token) ||
+    STOP_WORDS_PT.has(token) ||
+    STOP_WORDS_AR.has(token) ||
+    STOP_WORDS_ZH.has(token) ||
+    STOP_WORDS_KO.has(token) ||
+    STOP_WORDS_JA.has(token)
+  );
+}
+
 /**
  * Check if a token looks like a meaningful keyword.
  * Returns false for short tokens, numbers-only, etc.
@@ -665,14 +739,7 @@ export function extractKeywords(query: string): string[] {
 
   for (const token of tokens) {
     // Skip stop words
-    if (
-      STOP_WORDS_EN.has(token) ||
-      STOP_WORDS_ES.has(token) ||
-      STOP_WORDS_PT.has(token) ||
-      STOP_WORDS_ZH.has(token) ||
-      STOP_WORDS_KO.has(token) ||
-      STOP_WORDS_JA.has(token)
-    ) {
+    if (isQueryStopWordToken(token)) {
       continue;
     }
     // Skip invalid keywords
